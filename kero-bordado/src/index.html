@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kero Bordado</title>
+<meta name="description" content="Converte imagens e nomes em arquivos .PES para a Brother PE-560L (bastidor 10 × 10 cm).">
+<meta name="theme-color" content="#7a2e3a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='none' stroke='%237a2e3a' stroke-width='6'/%3E%3Cpath d='M14 40 L24 24 L32 36 L40 22 L50 40' fill='none' stroke='%23d9a21b' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Baloo+2:wght@800&family=Dancing+Script:wght@700&family=Fredoka:wght@700&family=Great+Vibes&family=Lobster&family=Montserrat:wght@800&family=Pacifico&family=Playfair+Display:wght@700&family=Satisfy&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #faf7f2; --card: #ffffff; --ink: #2b2226; --muted: #6f6468; --line: #e6ddd3;
+  --brand: #7a2e3a; --brand-ink: #ffffff; --gold: #c9921a; --ok: #2e7d4f; --warn: #a15c00; --err: #b3261e;
+  --soft: #f3ece3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1719; --card: #262022; --ink: #f2ebe7; --muted: #b9adb1; --line: #3d3437;
+    --brand: #d77a88; --brand-ink: #1c1719; --gold: #e3b14a; --ok: #6cc08f; --warn: #f0a640; --err: #ff8a80; --soft: #2f282a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1c1719; --card: #262022; --ink: #f2ebe7; --muted: #b9adb1; --line: #3d3437;
+  --brand: #d77a88; --brand-ink: #1c1719; --gold: #e3b14a; --ok: #6cc08f; --warn: #f0a640; --err: #ff8a80; --soft: #2f282a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { background: var(--brand); color: var(--brand-ink); padding: 18px 16px; }
+header .in { max-width: 860px; margin: 0 auto; display: flex; gap: 12px; align-items: center; }
+header h1 { margin: 0; font-size: 1.35rem; letter-spacing: .2px; }
+header p { margin: 0; opacity: .85; font-size: .9rem; }
+main { max-width: 860px; margin: 0 auto; padding: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 0 0 14px; }
+.card h2 { margin: 0 0 10px; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+.num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: var(--brand-ink); font-size: .85rem; font-weight: 700; flex: none; }
+.abas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.abas button { padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--soft); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.abas button.on { border-color: var(--brand); background: var(--card); color: var(--brand); }
+label.campo { display: block; margin: 10px 0 4px; font-weight: 600; font-size: .92rem; }
+input[type=text], input[type=number], select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; }
+input[type=file] { width: 100%; padding: 10px; border: 2px dashed var(--line); border-radius: 10px; background: var(--soft); color: var(--ink); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+#miniatura { max-width: 100%; max-height: 220px; margin-top: 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+.dica { color: var(--muted); font-size: .88rem; margin: 6px 0 0; }
+#dicas-tecido { margin: 6px 0 0; padding-left: 20px; color: var(--muted); font-size: .88rem; }
+#amostra-fonte { font-size: 2.2rem; padding: 8px 4px; min-height: 64px; overflow-wrap: anywhere; }
+.linha-cor { display: flex; gap: 8px; align-items: center; }
+.sw { display: inline-block; width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,0,0,.25); flex: none; vertical-align: middle; }
+#lista-cores .cor { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+#lista-cores .cor.off { opacity: .5; }
+#lista-cores .cor select { width: auto; flex: 1 1 140px; padding: 6px 8px; }
+.ordem { font-weight: 700; width: 28px; }
+.seta { color: var(--muted); }
+.chk { display: flex; align-items: center; gap: 4px; font-size: .9rem; }
+.mover button { border: 1px solid var(--line); background: var(--soft); color: var(--ink); border-radius: 8px; width: 34px; height: 32px; cursor: pointer; }
+.mover button:disabled { opacity: .35; cursor: default; }
+.btn, #gerar { display: inline-block; text-decoration: none; text-align: center; border: 0; border-radius: 10px; padding: 11px 16px; background: var(--brand); color: var(--brand-ink); font: inherit; font-weight: 700; cursor: pointer; }
+.btn.sec { background: var(--soft); color: var(--ink); border: 1px solid var(--line); }
+#gerar { width: 100%; font-size: 1.1rem; padding: 14px; }
+#info-tamanho { margin-top: 10px; font-size: .92rem; }
+.ok { color: var(--ok); } .aviso { color: var(--warn); } .erro { color: var(--err); font-weight: 600; }
+#mensagem { margin-top: 10px; }
+#processando { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; place-items: center; z-index: 9; }
+#processando[hidden] { display: none; }
+#processando div { background: var(--card); color: var(--ink); padding: 18px 22px; border-radius: 12px; font-weight: 600; }
+#previa { width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
+.arquivo { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; padding: 12px; border: 1px solid var(--line); border-radius: 10px; margin: 8px 0; }
+.arquivo.destaque { background: var(--soft); }
+.arquivo .pos { color: var(--muted); font-size: .88rem; }
+.botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.ordem-linhas { list-style: none; padding: 0; } .ordem-linhas li { margin: 4px 0; }
+.avisos { color: var(--warn); }
+details { border-top: 1px solid var(--line); padding: 10px 0; }
+details summary { cursor: pointer; font-weight: 700; }
+details ol, details ul { padding-left: 20px; }
+footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 10px 16px 30px; }
+#impressao { display: none; }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body { background: #fff; color: #000; }
+  header, main, footer, #processando { display: none !important; }
+  #impressao { display: block; }
+  .pagina { page-break-after: always; font: 11pt/1.4 sans-serif; }
+  .pagina h1 { font-size: 15pt; margin: 0 0 6px; } .pagina h2 { font-size: 12pt; margin: 12px 0 4px; }
+  .svgwrap svg { display: block; }
+}
+</style>
+</head>
+<body>
+<header><div class="in">
+  <svg width="40" height="40" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" stroke-width="5"/><path d="M14 40 L24 24 L32 36 L40 22 L50 40" fill="none" stroke="#e3b14a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div><h1>Kero Bordado</h1><p>Imagem ou nome → arquivo .PES para a Brother PE-560L</p></div>
+</div></header>
+
+<main>
+  <section class="card">
+    <h2><span class="num">1</span> O que vamos bordar?</h2>
+    <div class="abas">
+      <button type="button" data-mode="imagem" class="on">🖼️ Imagem / logo</button>
+      <button type="button" data-mode="nome">✍️ Nome / texto</button>
+    </div>
+    <div id="bloco-imagem">
+      <label class="campo" for="arquivo">Escolha a imagem (PNG ou JPG, fundo liso, poucas cores)</label>
+      <input id="arquivo" type="file" accept="image/*">
+      <img id="miniatura" alt="Imagem escolhida" hidden>
+      <p class="dica">Funciona melhor com logos, desenhos e nomes com fundo branco ou transparente. Fotos de pessoas não ficam boas em bordado.</p>
+    </div>
+    <div id="bloco-nome" hidden>
+      <label class="campo" for="texto">Nome ou texto</label>
+      <input id="texto" type="text" placeholder="Ex.: Abraão" autocomplete="off">
+      <div class="grid2">
+        <div><label class="campo" for="fonte">Tipo de letra</label><select id="fonte"></select></div>
+        <div><label class="campo" for="cor-texto">Cor da linha</label>
+          <div class="linha-cor"><span id="amostra-texto" class="sw"></span><select id="cor-texto"></select></div></div>
+      </div>
+      <div id="amostra-fonte">Seu nome</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">2</span> Peça e tecido</h2>
+    <div class="grid2">
+      <div><label class="campo" for="peca">Peça</label><select id="peca"></select></div>
+      <div><label class="campo" for="tecido">Tecido</label><select id="tecido"></select></div>
+    </div>
+    <p class="dica" id="dica-peca"></p>
+    <ul id="dicas-tecido"></ul>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">3</span> Tamanho</h2>
+    <div id="campo-largura"><label class="campo" for="largura">Largura final do desenho (cm)</label>
+      <input id="largura" type="number" min="1" max="60" step="0.5" value="9"></div>
+    <div id="campo-letra" hidden><label class="campo" for="letra">Altura da letra maiúscula (cm)</label>
+      <input id="letra" type="number" min="0.5" max="9" step="0.1" value="2.5">
+      <p class="dica">Se o nome passar de 9,5 cm de largura, o app divide em partes que cabem no bastidor, mantendo a mesma altura e proporção.</p></div>
+    <div id="info-tamanho"></div>
+  </section>
+
+  <section class="card" id="bloco-cores" hidden>
+    <h2><span class="num">4</span> Cores e ordem das linhas</h2>
+    <p class="dica">Cada cor da imagem vira uma linha. A 1ª é bordada primeiro. Cores que forem para a mesma linha são juntadas. Desmarque "bordar" para ignorar uma cor (ex.: sombras).</p>
+    <div id="lista-cores"></div>
+  </section>
+
+  <button id="gerar" type="button">Gerar bordado</button>
+  <div id="mensagem" role="status"></div>
+
+  <section class="card" id="resultado" hidden style="margin-top:14px">
+    <h2>✅ Bordado pronto</h2>
+    <canvas id="previa" aria-label="Prévia dos pontos"></canvas>
+    <div id="resumo"></div>
+    <div id="arquivos"></div>
+    <button class="btn sec" id="imprimir" type="button">🖨️ Imprimir ficha e gabarito (tamanho real)</button>
+  </section>
+
+  <section class="card">
+    <h2>📤 Como mandar para a máquina</h2>
+    <details open><summary>Pelo pendrive (USB)</summary>
+      <ol>
+        <li>Use um pendrive de até 8 GB, formatado em <b>FAT32</b>.</li>
+        <li>Copie o arquivo <b>.PES</b> solto na <b>raiz</b> do pendrive (fora de pastas). Se baixou o .zip, extraia antes.</li>
+        <li>Com a máquina ligada, encaixe o pendrive e toque no ícone de <b>USB</b> na tela.</li>
+        <li>Escolha o desenho, confira tamanho e posição e toque em <b>Definir/OK</b>.</li>
+        <li>Prenda o tecido com entretela no bastidor, encaixe e aperte <b>Iniciar/Parar</b>. A máquina para a cada troca de linha.</li>
+      </ol></details>
+    <details><summary>Pelo Wi-Fi (app Brother Artspira)</summary>
+      <ol>
+        <li>Instale o <b>Brother Artspira</b> no celular e crie a conta.</li>
+        <li>Na máquina: Configurações → Rede/WLAN → conecte na rede <b>2,4 GHz</b> da casa (redes "5G" não funcionam).</li>
+        <li>No app, registre a máquina (a máquina mostra um código). Celular e máquina na mesma rede.</li>
+        <li>Baixe o .PES aqui (ou toque em <b>Compartilhar</b>) → no Artspira: <b>Minhas criações → Importar</b> → <b>Enviar para a máquina</b>.</li>
+        <li>Na máquina, abra os dados recebidos por Wi-Fi e escolha o desenho.</li>
+      </ol>
+      <p class="dica">O plano grátis do Artspira guarda um número limitado de desenhos; apague os antigos quando encher.</p></details>
+    <details><summary>Nomes grandes divididos em partes</summary>
+      <ol>
+        <li>Clique em <b>Imprimir ficha e gabarito</b> e imprima em <b>tamanho real (100%)</b>. Confira com régua: o quadrado tracejado tem 10 cm.</li>
+        <li>Posicione as folhas na peça, alinhadas, e marque a <b>cruz vermelha</b> de cada parte com caneta hidrossolúvel.</li>
+        <li>Prenda a peça com a cruz da parte 1 no centro do bastidor e borde a parte 1. Repita para a 2, 3…</li>
+        <li>Antes de começar cada parte, use o botão de <b>posição/centro</b> da máquina para conferir se a agulha cai sobre a cruz.</li>
+      </ol></details>
+  </section>
+</main>
+<footer>Kero Bordado · área útil usada: 9,5 × 9,5 cm (bastidor 10 × 10 cm da Brother PE-560L) · teste sempre num retalho antes da peça final.</footer>
+
+<div id="processando" hidden><div>Gerando os pontos…</div></div>
+<div id="impressao"></div>
+<script type="module">/*APP*/</script>
+</body>
+</html>

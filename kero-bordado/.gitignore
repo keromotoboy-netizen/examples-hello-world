@@ -1,0 +1,7 @@
+node_modules/
+dist/worker.js
+test/*.pes
+test/*.png
+test/*.zip
+test/*.pdf
+test/*.jpg
