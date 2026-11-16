@@ -1,4 +1,4 @@
-import { analyzeColors, labelsToMasks, maskToPolys, buildStitches, chooseCuts, clipRect, polyBounds, rgbToLab, labelWithPalette, thickFraction, polyArea } from "./engine.js";
+import { analyzeColors, labelsToMasks, layerGeometry, clipSatin, buildStitches, chooseCuts, clipRect, polyBounds, labelWithPalette, thickFraction, polyArea } from "./engine.js";
 import { writePES, BROTHER_PALETTE, nearestIndex, STITCH } from "./pes.js";
 import { makeZip } from "./zip.js";
 import { HOOP, FABRICS, PIECES, FONTS } from "./presets.js";
@@ -21,7 +21,7 @@ const ptName = (n) => NOMES_PT[n] || n;
 const nearestThread = (rgb) => nearestIndex({ r: rgb[0], g: rgb[1], b: rgb[2] }, BROTHER_PALETTE);
 
 const state = {
-  mode: "imagem", img: null, imgName: "", analysis: null, colors: [],
+  useSatin: true, mode: "imagem", img: null, imgName: "", analysis: null, colors: [],
   text: "", font: FONTS[0].family, textThread: 21,
   piece: "toalha_rosto", fabric: "toalha", widthCm: 9, letterCm: 2.5, result: null,
 };
@@ -196,8 +196,9 @@ async function generate() {
       if (frac < 0.25) warnings.push("Esta fonte tem traços muito finos neste tamanho. Aumente a altura da letra ou escolha uma fonte mais grossa (ex.: Pacifico, Fredoka).");
     }
     const fabric = FABRICS[state.fabric];
+    const fabParams = { ...fabric.params, satin: !!(fabric.params.satin && state.useSatin) };
     const layers = R.masks.map((m, k) => ({
-      polys: maskToPolys(m, R.W, R.H, pxPerMm, 0.8),
+      ...layerGeometry(m, R.W, R.H, pxPerMm, fabParams),
       thread: { r: BROTHER_PALETTE[R.threads[k]][0], g: BROTHER_PALETTE[R.threads[k]][1], b: BROTHER_PALETTE[R.threads[k]][2], name: ptName(BROTHER_PALETTE[R.threads[k]][3]) },
       angle: k % 2 ? 135 : 45,
     }));
@@ -212,8 +213,9 @@ async function generate() {
     const parts = [];
     for (let i = 0; i + 1 < edges.length; i++) {
       const x0 = edges[i].x - (edges[i].inked ? ov / 2 : 0), x1 = edges[i + 1].x + (edges[i + 1].inked ? ov / 2 : 0);
-      const pl = edges.length === 2 ? layers : layers.map(L => ({ ...L, polys: clipRect(L.polys, x0, t - 1, x1, b + 1).filter(p => polyArea(p) > 0.3) }));
-      const res = buildStitches(pl, fabric.params);
+      const keep = (ps) => clipRect(ps, x0, t - 1, x1, b + 1).filter(p => polyArea(p) > 0.3);
+      const pl = edges.length === 2 ? layers : layers.map(L => ({ ...L, polys: keep(L.polys), fillPolys: keep(L.fillPolys), satin: clipSatin(L.satin, x0, x1) }));
+      const res = buildStitches(pl, fabParams);
       if (!res.count) continue;
       if (res.size[0] > HOOP.usable + 0.5) throw new Error("Uma das partes ficou larga demais. Tente um tamanho um pouco menor.");
       parts.push(res);
@@ -376,6 +378,7 @@ function init() {
   $("#texto").addEventListener("input", (e) => { state.text = e.target.value; $("#amostra-fonte").textContent = state.text || "Seu nome"; });
   $("#fonte").addEventListener("change", (e) => { state.font = e.target.value; const f = FONTS.find(x => x.family === state.font); const a = $("#amostra-fonte"); a.style.fontFamily = `'${f.family}'`; a.style.fontWeight = f.weight || 400; });
   $("#cor-texto").addEventListener("change", (e) => { state.textThread = +e.target.value; updateTextSwatch(); $("#amostra-fonte").style.color = hex(BROTHER_PALETTE[state.textThread]); });
+  $("#satin").addEventListener("change", (e) => { state.useSatin = e.target.checked; });
   $("#gerar").addEventListener("click", generate);
   $("#imprimir").addEventListener("click", () => window.print());
   $("#amostra-fonte").style.fontFamily = `'${state.font}'`;

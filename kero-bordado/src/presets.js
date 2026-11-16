@@ -4,7 +4,7 @@ export const HOOP = { w: 100, h: 100, usable: 95 };
 export const FABRICS = {
   toalha: {
     label: "Toalha felpuda",
-    params: { density: 0.38, fillStitch: 3.5, maxStitch: 7, underlaySpacing: 1.8, underlayInset: 0.35, pullComp: 0.2, edgeRun: true },
+    params: { density: 0.38, fillStitch: 3.5, maxStitch: 7, underlaySpacing: 1.8, underlayInset: 0.35, pullComp: 0.2, edgeRun: true, satin: true, satinMax: 5.0, satinSpacing: 0.42, satinComp: 0.15 },
     minLetterMm: 8,
     tips: [
       "Entretela hidrossolúvel (tipo plástico) POR CIMA do pelo — sem ela o pelo engole o bordado.",
@@ -16,7 +16,7 @@ export const FABRICS = {
   },
   malha: {
     label: "Malha / camiseta / body",
-    params: { density: 0.45, fillStitch: 3.5, maxStitch: 7, underlaySpacing: 2.2, underlayInset: 0.4, pullComp: 0.3, edgeRun: false },
+    params: { density: 0.45, fillStitch: 3.5, maxStitch: 7, underlaySpacing: 2.2, underlayInset: 0.4, pullComp: 0.3, edgeRun: false, satin: true, satinMax: 7.0, satinSpacing: 0.5, satinComp: 0.2 },
     minLetterMm: 5,
     tips: [
       "Entretela de cortar (cut-away) por baixo — malha estica e a de rasgar não segura.",
@@ -26,19 +26,19 @@ export const FABRICS = {
   },
   algodao: {
     label: "Algodão / tricoline / pano de prato",
-    params: { density: 0.42, fillStitch: 4.0, maxStitch: 7, underlaySpacing: 2.5, underlayInset: 0.4, pullComp: 0.15, edgeRun: false },
+    params: { density: 0.42, fillStitch: 4.0, maxStitch: 7, underlaySpacing: 2.5, underlayInset: 0.4, pullComp: 0.15, edgeRun: false, satin: true, satinMax: 7.0, satinSpacing: 0.45, satinComp: 0.15 },
     minLetterMm: 5,
     tips: ["Entretela de rasgar (tear-away) por baixo.", "Agulha de bordar 75/11.", "Tecido bem esticado no bastidor, como pele de tambor."],
   },
   jeans: {
     label: "Jeans / brim / lona",
-    params: { density: 0.40, fillStitch: 4.0, maxStitch: 7, underlaySpacing: 2.2, underlayInset: 0.4, pullComp: 0.15, edgeRun: false },
+    params: { density: 0.40, fillStitch: 4.0, maxStitch: 7, underlaySpacing: 2.2, underlayInset: 0.4, pullComp: 0.15, edgeRun: false, satin: true, satinMax: 7.0, satinSpacing: 0.45, satinComp: 0.15 },
     minLetterMm: 6,
     tips: ["Entretela de rasgar (tear-away) média por baixo.", "Agulha 90/14.", "Vá devagar nas costuras grossas: evite bordar em cima delas."],
   },
   feltro: {
     label: "Feltro / flanela / moletom",
-    params: { density: 0.42, fillStitch: 3.5, maxStitch: 7, underlaySpacing: 2.0, underlayInset: 0.35, pullComp: 0.2, edgeRun: true },
+    params: { density: 0.42, fillStitch: 3.5, maxStitch: 7, underlaySpacing: 2.0, underlayInset: 0.35, pullComp: 0.2, edgeRun: true, satin: true, satinMax: 6.5, satinSpacing: 0.45, satinComp: 0.2 },
     minLetterMm: 7,
     tips: ["Moletom e flanela: hidrossolúvel por cima ajuda a não afundar.", "Entretela de cortar (cut-away) por baixo.", "Agulha 75/11."],
   },

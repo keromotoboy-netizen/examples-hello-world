@@ -358,7 +358,8 @@ function buildTravelGraph(reg) {
   }
   return { reg, rs, nodes, adj, ringStart };
 }
-function routeGraph(G, a, b, maxGap = 1.6) {
+let travelGap = 1.6;
+function routeGraph(G, a, b, maxGap = travelGap) {
   // conecta a e b ao anel mais próximo (projeção)
   const attach = (p) => {
     let best = null;
@@ -511,7 +512,8 @@ export function buildStitches(layers, fabric) {
       const d = Math.hypot(p0[0] - pos[0], p0[1] - pos[1]);
       if (d > 0.5) {
         let route = null;
-        if (inside && d < 6 && segmentInside(inside, pos, p0)) route = [p0];
+        const okIn = inside && (typeof inside === 'function' ? d < 14 && inside(pos, p0) : d < 6 && segmentInside(inside, pos, p0));
+        if (okIn) route = [p0];
         else if (travelGraphs) {
           let r = null;
           for (const G of travelGraphs) { const q = routeGraph(G, pos, p0); if (q && (!r || q.L < r.L)) r = q; }
@@ -546,13 +548,13 @@ export function buildStitches(layers, fabric) {
     return res;
   };
 
-  const active = layers.filter(L => L.polys.length);
+  const active = layers.filter(L => (L.fillPolys ?? L.polys).length || (L.satin || []).length);
   active.forEach((L, li) => {
     if (li > 0) { tieOff(); out.push([pos[0], pos[1], COLOR_CHANGE]); }
     threads.push(L.thread);
     const n0 = out.length;
     const ang = L.angle ?? 45;
-    for (const poly of orderPolys(L.polys)) {
+    for (const poly of orderPolys(L.fillPolys ?? L.polys)) {
       const safe = offsetPoly(poly, -0.2)[0] || poly;
       const tr = offsetPoly(poly, -0.3);
       travelGraphs = (tr.length ? tr : [poly]).map(buildTravelGraph);
@@ -570,7 +572,38 @@ export function buildStitches(layers, fabric) {
       // 3) contorno de acabamento
       if (fabric.edgeRun) for (const tp of tops) for (const e of offsetPoly(tp, -0.15)) for (const pth of outlinePaths(e, 2.0)) emit(pth, offsetPoly(poly, 0.5)[0] || poly);
     }
-    stats.push({ name: L.thread.name, stitches: out.slice(n0).filter(s => s[2] === STITCH).length, shapes: L.polys.length });
+    // 4) ponto cheio (satin) nos traços finos
+    if (L.satin && L.satin.length) {
+      travelGap = 3.2;
+      travelGraphs = L.polys.map(p => { const o = offsetPoly(p, -0.3); return o.length ? o : [p]; }).flat().map(buildTravelGraph);
+      travelEdgeGraph = null;
+      const comp = fabric.satinComp ?? 0.15, sp = fabric.satinSpacing ?? 0.42;
+      const inside = L.inMask ? (a, b) => { const n = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.4)); for (let i = 0; i <= n; i++) if (!L.inMask(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n)) return false; return true; } : null;
+      const rest = L.satin.slice();
+      const first = (c, rev) => { const q = rev ? c.s[c.s.length - 1] : c.s[0]; return [q.x, q.y]; };
+      while (rest.length) {
+        const cur = pos || [0, 0];
+        let bi = 0, br = false, bd = Infinity;
+        rest.forEach((c, k) => [false, true].forEach(rev => { const f = first(c, rev), d = (f[0] - cur[0]) ** 2 + (f[1] - cur[1]) ** 2; if (d < bd) { bd = d; bi = k; br = rev; } }));
+        const col = rest.splice(bi, 1)[0];
+        const S = br ? col.s.slice().reverse() : col.s;
+        const left = (q, e = comp) => [q.x + q.nx * (q.hl + e), q.y + q.ny * (q.hl + e)];
+        const right = (q, e = comp) => [q.x - q.nx * (q.hr + e), q.y - q.ny * (q.hr + e)];
+        const everyK = Math.max(1, Math.round(2.5 / sp));
+        const center = S.filter((_, i) => i % everyK === 0 || i === S.length - 1).map(q => [q.x, q.y]);
+        if (col.w < 1.1) { emit(center, inside); emit(center.slice().reverse(), inside); continue; }
+        emit(center, inside);                       // base: linha central
+        if (col.w > 3.5) {                          // colunas largas: zigue-zague de base
+          const k2 = Math.max(1, Math.round(1.5 / sp)); const zz = [];
+          S.forEach((q, i) => { if (i % k2) return; const side = (i / k2) % 2 === 0; const p = side ? left(q, -0.5) : right(q, -0.5); zz.push(p); });
+          emit(zz, inside);
+        }
+        const zig = S.slice().reverse().map((q, i) => (i % 2 === 0 ? left(q) : right(q)));
+        emit(zig, inside);                          // ponto cheio, de volta ao começo
+      }
+    }
+    travelGap = 1.6;
+    stats.push({ name: L.thread.name, stitches: out.slice(n0).filter(s => s[2] === STITCH).length, shapes: (L.fillPolys ?? L.polys).length, satin: (L.satin || []).length });
   });
   if (pos) { tieOff(); out.push([pos[0], pos[1], END]); }
   // centraliza
@@ -661,4 +694,258 @@ export function thickFraction(mask, W, H, r) {
   let a = 0, b = 0; const e = erode(mask, W, H, r);
   for (let i = 0; i < mask.length; i++) { a += mask[i]; b += e[i]; }
   return a ? b / a : 1;
+}
+
+// ================================================================== PONTO CHEIO (SATIN)
+const BIG = 1e12;
+function edt1d(f, d, v, z, n) {
+  let k = 0; v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+  for (let q = 1; q < n; q++) {
+    let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+    while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+    k++; v[k] = q; z[k] = s; z[k + 1] = Infinity;
+  }
+  k = 0;
+  for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
+}
+/** distância² de cada pixel até a semente (seed=1) mais próxima */
+function sqdist(seed, W, H) {
+  const N = W * H, g = new Float64Array(N);
+  for (let i = 0; i < N; i++) g[i] = seed[i] ? 0 : BIG;
+  const m = Math.max(W, H) + 1;
+  const f = new Float64Array(m), d = new Float64Array(m), v = new Int32Array(m), z = new Float64Array(m + 1);
+  for (let x = 0; x < W; x++) { for (let y = 0; y < H; y++) f[y] = g[y * W + x]; edt1d(f, d, v, z, H); for (let y = 0; y < H; y++) g[y * W + x] = d[y]; }
+  for (let y = 0; y < H; y++) { for (let x = 0; x < W; x++) f[x] = g[y * W + x]; edt1d(f, d, v, z, W); for (let x = 0; x < W; x++) g[y * W + x] = d[x]; }
+  return Float32Array.from(g);
+}
+function distInside(mask, W, H) {
+  const seed = new Uint8Array(W * H);
+  for (let i = 0; i < seed.length; i++) seed[i] = mask[i] ? 0 : 1;
+  const d = sqdist(seed, W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const b = Math.min(x + 1, W - x, y + 1, H - y); if (b * b < d[y * W + x]) d[y * W + x] = b * b; }
+  return d;
+}
+/** abertura por disco: união de todos os discos de raio r que cabem dentro da máscara */
+function discOpen(mask, W, H, r) {
+  const d = distInside(mask, W, H), r2 = r * r, core = new Uint8Array(W * H);
+  let any = false;
+  for (let i = 0; i < core.length; i++) if (mask[i] && d[i] >= r2) { core[i] = 1; any = true; }
+  const out = new Uint8Array(W * H);
+  if (!any) return out;
+  const d2 = sqdist(core, W, H);
+  for (let i = 0; i < out.length; i++) if (mask[i] && d2[i] <= r2) out[i] = 1;
+  return out;
+}
+function components(mask, W, H) {
+  const N = W * H, label = new Int32Array(N), areas = [0], stack = new Int32Array(N);
+  let n = 0;
+  for (let s = 0; s < N; s++) {
+    if (!mask[s] || label[s]) continue;
+    n++; let sp = 0, area = 0; stack[sp++] = s; label[s] = n;
+    while (sp) {
+      const i = stack[--sp]; area++;
+      const x = i % W, y = (i / W) | 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue; const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        const j = yy * W + xx; if (mask[j] && !label[j]) { label[j] = n; stack[sp++] = j; }
+      }
+    }
+    areas.push(area);
+  }
+  return { label, areas };
+}
+
+/** Separa a máscara de uma cor em "grosso" (preenchimento) e "fino" (ponto cheio).
+ *  Cruzamentos/ramificações dos traços finos também viram preenchimento: o satin fica só em traços simples. */
+export function splitLayerMask(mask, W, H, ppm, o) {
+  const thick0 = discOpen(mask, W, H, (o.satinMax / 2) * ppm);
+  const thin0 = new Uint8Array(W * H);
+  for (let i = 0; i < thin0.length; i++) thin0[i] = mask[i] && !thick0[i] ? 1 : 0;
+  const thinO = discOpen(thin0, W, H, Math.max(1, 0.35 * ppm));
+  // cruzamentos: esqueleto -> pontos com 3+ vizinhos -> discos que viram preenchimento
+  const dIn = distInside(thinO, W, H);
+  const skel = zsThin(thinO, W, H);
+  pruneSpurs(skel, W, H, dIn, ppm);
+  const { deg } = tracePaths(skel, W, H);
+  const blob = new Uint8Array(W * H);
+  for (let i = 0; i < deg.length; i++) {
+    if (deg[i] < 3) continue;
+    const r = Math.sqrt(dIn[i]) * 1.7 + 0.7 * ppm, cx = i % W, cy = (i / W) | 0, R = Math.ceil(r);
+    for (let y = Math.max(0, cy - R); y <= Math.min(H - 1, cy + R); y++) for (let x = Math.max(0, cx - R); x <= Math.min(W - 1, cx + R); x++) if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) blob[y * W + x] = 1;
+  }
+  const thin1 = new Uint8Array(W * H);
+  for (let i = 0; i < thin1.length; i++) thin1[i] = thinO[i] && !blob[i] ? 1 : 0;
+  const { label, areas } = components(thin1, W, H);
+  const minA = (o.minThinArea ?? 3) * ppm * ppm;
+  const d1 = distInside(thin1, W, H), rmax = new Float32Array(areas.length);
+  for (let i = 0; i < thin1.length; i++) if (label[i] && d1[i] > rmax[label[i]]) rmax[label[i]] = d1[i];
+  // só vale satin em traços ALONGADOS (comprimento >= ~3x a largura); formas curtas/redondas (pingo do i) ficam como preenchimento
+  const ok = areas.map((a, k) => k > 0 && a >= minA && a / (4 * rmax[k]) >= 3.5 * 1.0);
+  const thin = new Uint8Array(W * H), thick = new Uint8Array(W * H);
+  for (let i = 0; i < thin.length; i++) if (label[i] && ok[label[i]]) thin[i] = 1;
+  for (let i = 0; i < thick.length; i++) thick[i] = mask[i] && !thin[i] ? 1 : 0;
+  return { thick, thin };
+}
+
+function zsThin(mask, W, H) {
+  const img = Uint8Array.from(mask), del = [];
+  let y0 = H, y1 = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (img[y * W + x]) { if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  y0 = Math.max(1, y0); y1 = Math.min(H - 2, y1);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let pass = 0; pass < 2; pass++) {
+      del.length = 0;
+      for (let y = y0; y <= y1; y++) for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x; if (!img[i]) continue;
+        const p2 = img[i - W], p3 = img[i - W + 1], p4 = img[i + 1], p5 = img[i + W + 1], p6 = img[i + W], p7 = img[i + W - 1], p8 = img[i - 1], p9 = img[i - W - 1];
+        const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9; if (B < 2 || B > 6) continue;
+        const A = (!p2 && p3) + (!p3 && p4) + (!p4 && p5) + (!p5 && p6) + (!p6 && p7) + (!p7 && p8) + (!p8 && p9) + (!p9 && p2);
+        if (A !== 1) continue;
+        if (pass === 0) { if (p2 * p4 * p6 || p4 * p6 * p8) continue; } else { if (p2 * p4 * p8 || p2 * p6 * p8) continue; }
+        del.push(i);
+      }
+      if (del.length) { changed = true; for (const i of del) img[i] = 0; }
+    }
+  }
+  return img;
+}
+
+function tracePaths(skel, W, H) {
+  const N = W * H, px = [];
+  for (let i = 0; i < N; i++) if (skel[i]) px.push(i);
+  const nbrs = (i) => {
+    const x = i % W, y = (i / W) | 0, r = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue; const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+      if (skel[yy * W + xx]) r.push(yy * W + xx);
+    }
+    return r;
+  };
+  const deg = new Uint8Array(N);
+  for (const i of px) deg[i] = nbrs(i).length;
+  const seen = new Set(), touched = new Uint8Array(N), paths = [];
+  const ek = (a, b) => (a < b ? a * N + b : b * N + a);
+  for (const i of px) {
+    if (deg[i] === 2) continue;
+    for (const j of nbrs(i)) {
+      if (seen.has(ek(i, j))) continue;
+      seen.add(ek(i, j));
+      const path = [i, j]; let prev = i, cur = j;
+      while (deg[cur] === 2) {
+        const ns = nbrs(cur); const nx = ns[0] === prev ? ns[1] : ns[0];
+        if (nx === undefined || seen.has(ek(cur, nx))) break;
+        seen.add(ek(cur, nx)); path.push(nx); prev = cur; cur = nx;
+      }
+      for (const p of path) touched[p] = 1;
+      paths.push(path);
+    }
+  }
+  for (const i of px) { // laços sem nó
+    if (touched[i]) continue;
+    const path = [i]; touched[i] = 1;
+    let prev = i, cur = nbrs(i)[0];
+    while (cur !== undefined && cur !== i && !touched[cur]) {
+      path.push(cur); touched[cur] = 1;
+      const ns = nbrs(cur); const nx = ns[0] === prev ? ns[1] : ns[0]; prev = cur; cur = nx;
+    }
+    if (path.length > 3) { path.push(i); paths.push(path); }
+  }
+  return { paths, deg };
+}
+function pruneSpurs(skel, W, H, dIn, ppm) {
+  for (let it = 0; it < 3; it++) {
+    const { paths, deg } = tracePaths(skel, W, H);
+    let removed = 0;
+    for (const p of paths) {
+      const a = deg[p[0]], b = deg[p[p.length - 1]];
+      if ((a === 1) === (b === 1)) continue;
+      const jn = a === 1 ? p.length - 1 : 0;
+      if (deg[p[jn]] < 3) continue;
+      if (p.length < Math.max(Math.sqrt(dIn[p[jn]]), 0.8 * ppm)) { for (let k = 0; k < p.length; k++) if (k !== jn) skel[p[k]] = 0; removed++; }
+    }
+    if (!removed) break;
+  }
+}
+const inPx = (m, W, H, x, y) => x >= 0 && y >= 0 && x < W && y < H && m[(y | 0) * W + (x | 0)] === 1;
+function smoothPts(pts, k) {
+  const n = pts.length; if (n < 3 || k < 1) return pts;
+  return pts.map((p, i) => { const h = Math.min(k, i, n - 1 - i); let sx = 0, sy = 0; for (let j = i - h; j <= i + h; j++) { sx += pts[j][0]; sy += pts[j][1]; } const m = 2 * h + 1; return [sx / m, sy / m]; });
+}
+function resamplePts(pts, step) {
+  const n = pts.length, cum = [0];
+  for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const L = cum[n - 1], m = Math.max(1, Math.round(L / step)), out = [];
+  let j = 0;
+  for (let k = 0; k <= m; k++) {
+    const t = L * k / m; while (j < n - 2 && cum[j + 1] < t) j++;
+    const seg = cum[j + 1] - cum[j] || 1, u = (t - cum[j]) / seg;
+    out.push([pts[j][0] + (pts[j + 1][0] - pts[j][0]) * u, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * u]);
+  }
+  return out;
+}
+function extendEnd(pts, atStart, ray, W, H, cap) {
+  const n = pts.length, a = atStart ? pts[0] : pts[n - 1], b = atStart ? pts[Math.min(n - 1, 4)] : pts[Math.max(0, n - 5)];
+  let tx = a[0] - b[0], ty = a[1] - b[1]; const L = Math.hypot(tx, ty); if (L < 1e-6) return;
+  tx /= L; ty /= L; let last = a;
+  for (let s = 0.5; s <= cap; s += 0.5) { const x = a[0] + tx * s, y = a[1] + ty * s; if (!inPx(ray, W, H, x, y)) break; last = [x, y]; }
+  if (last !== a) { if (atStart) pts.unshift(last); else pts.push(last); }
+}
+const med5 = (a) => a.map((_, i) => { const w = []; for (let k = -2; k <= 2; k++) w.push(a[Math.min(a.length - 1, Math.max(0, i + k))]); w.sort((x, y) => x - y); return w[2]; });
+
+/** Colunas de ponto cheio ao longo do esqueleto de cada traço fino. Coordenadas em mm. */
+export function satinColumns(thin, W, H, ppm, o) {
+  const dIn = distInside(thin, W, H);
+  const skel = zsThin(thin, W, H);
+  pruneSpurs(skel, W, H, dIn, ppm);
+  const { paths } = tracePaths(skel, W, H);
+  const ray = new Uint8Array(W * H), sm = boxSum(thin, W, H, 1);
+  for (let i = 0; i < ray.length; i++) ray[i] = sm[i] > 0 ? 1 : 0;
+  const cols = [], cap = o.satinMax * ppm * 0.6, step = o.spacing * ppm;
+  for (const path of paths) {
+    if (path.length < 3) continue;
+    let pts = path.map(i => [i % W + 0.5, ((i / W) | 0) + 0.5]);
+    pts = smoothPts(pts, Math.round(0.9 * ppm));
+    const ecap = Math.sqrt(dIn[path[0]] || 1) * 1.3 + 2, ecap2 = Math.sqrt(dIn[path[path.length - 1]] || 1) * 1.3 + 2;
+    extendEnd(pts, true, ray, W, H, ecap); extendEnd(pts, false, ray, W, H, ecap2);
+    const S = resamplePts(pts, step); if (S.length < 3) continue;
+    const m = S.length, hl = [], hr = [], nn = [];
+    for (let i = 0; i < m; i++) {
+      const a = S[Math.max(0, i - 3)], b = S[Math.min(m - 1, i + 3)];
+      let tx = b[0] - a[0], ty = b[1] - a[1]; const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
+      const nx = -ty, ny = tx; nn.push([nx, ny]);
+      const march = (sg) => { let s = 0; while (s < cap && inPx(ray, W, H, S[i][0] + sg * nx * (s + 0.5), S[i][1] + sg * ny * (s + 0.5))) s += 0.5; return s; };
+      hl.push(march(1)); hr.push(march(-1));
+    }
+    const HL = med5(hl), HR = med5(hr);
+    const s = S.map((p, i) => ({ x: p[0] / ppm, y: p[1] / ppm, nx: nn[i][0], ny: nn[i][1], hl: Math.max(0.2, HL[i] / ppm), hr: Math.max(0.2, HR[i] / ppm) }));
+    const w = s.reduce((a, q) => a + q.hl + q.hr, 0) / s.length;
+    cols.push({ s, w, len: (m - 1) * o.spacing });
+  }
+  return cols;
+}
+
+/** Monta as camadas (preenchimento + ponto cheio) a partir da máscara de uma cor. */
+export function layerGeometry(mask, W, H, ppm, fab) {
+  const polys = maskToPolys(mask, W, H, ppm, 0.8);
+  const inMask = (x, y) => { const px = Math.floor(x * ppm), py = Math.floor(y * ppm); return px >= 0 && py >= 0 && px < W && py < H && mask[py * W + px] === 1; };
+  if (!fab.satin) return { polys, fillPolys: polys, satin: [], inMask };
+  const { thick, thin } = splitLayerMask(mask, W, H, ppm, { satinMax: fab.satinMax, minThinArea: 3 });
+  const fillPolys = maskToPolys(thick, W, H, ppm, 0.8);
+  const satin = satinColumns(thin, W, H, ppm, { satinMax: fab.satinMax, spacing: fab.satinSpacing });
+  return { polys, fillPolys, satin, inMask };
+}
+/** Recorta colunas de satin a uma faixa vertical [x0,x1] (mm) para dividir em partes. */
+export function clipSatin(cols, x0, x1) {
+  const out = [];
+  for (const c of cols) {
+    let run = [];
+    const flush = () => { if (run.length >= 3) out.push({ s: run, w: c.w, len: c.len }); run = []; };
+    for (const q of c.s) { if (q.x >= x0 && q.x <= x1) run.push(q); else flush(); }
+    flush();
+  }
+  return out;
 }
